@@ -3,7 +3,12 @@ package article
 import (
 	dto "article/src/app/dto/article"
 	models "article/src/infra/models/article"
+	"context"
+	"encoding/json"
 	"log"
+	"time"
+
+	redis "article/src/infra/persistence/redis/article"
 
 	"github.com/jmoiron/sqlx"
 )
@@ -38,10 +43,14 @@ type PreparedStatement struct {
 
 type ArticleRepo struct {
 	Connection *sqlx.DB
+	Redis      redis.ArticleRedisInt
 }
 
-func NewArticleRepository(db *sqlx.DB) ArticleRepository {
-	repo := &ArticleRepo{db}
+func NewArticleRepository(db *sqlx.DB, rds redis.ArticleRedisInt) ArticleRepository {
+	repo := &ArticleRepo{
+		Connection: db,
+		Redis:      rds,
+	}
 	InitPreparedStatement(repo)
 	return repo
 }
@@ -78,14 +87,48 @@ func (p *ArticleRepo) Create(data *dto.ArticleReqDTO) error {
 func (p *ArticleRepo) GetList(data *dto.GetArticleReqDTO) ([]*models.GetArticleModel, error) {
 	var resultData []*models.GetArticleModel
 	var err error
+	var key string
+
 	if data.Author != "" || data.Query != "" {
-		err = statement.getArticleByQuery.Select(&resultData, data.Query, data.Author)
+		dataKey, _ := json.Marshal(data)
+		key = string(dataKey)
 	} else {
-		err = statement.getArticle.Select(&resultData)
+		key = "getAll"
 	}
 
+	dataRedis, err := p.Redis.GetData(context.Background(), key)
 	if err != nil {
-		return nil, err
+		log.Printf("unable to GET data from redis. error: %v", err)
+	}
+
+	if dataRedis != "" {
+		// get data from redis if is there
+		err = json.Unmarshal([]byte(dataRedis), &resultData)
+		if err != nil {
+			return nil, err
+		}
+
+		log.Println("data from redis")
+
+	} else {
+		if data.Author != "" || data.Query != "" {
+			err = statement.getArticleByQuery.Select(&resultData, data.Query, data.Author)
+		} else {
+			err = statement.getArticle.Select(&resultData)
+		}
+
+		if err != nil {
+			return nil, err
+		}
+
+		redisData, _ := json.Marshal(resultData)
+		ttl := time.Duration(2) * time.Minute
+
+		// set data to redis
+		rds := p.Redis.SetData(context.Background(), key, redisData, ttl)
+		if err := rds.Err(); err != nil {
+			log.Printf("unable to SET data. error: %v", err)
+		}
 	}
 
 	return resultData, nil

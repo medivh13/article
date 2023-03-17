@@ -47,7 +47,7 @@ func main() {
 
 	postgresdb, err := postgres.New(conf.SqlDb, logger)
 	redisClient, err := redis.NewRedisClient(conf.Redis, logger)
-	
+
 	artcleRdb := articleRedis.NewArticleRedis(redisClient)
 	// gracefully close connection to persistence storage
 	defer func(l *logrus.Logger, sqlDB *sql.DB, dbName string) {
@@ -59,7 +59,7 @@ func main() {
 		}
 	}(logger, postgresdb.Conn.DB, postgresdb.Conn.DriverName())
 
-	articleRepository := pgArticle.NewArticleRepository(postgresdb.Conn)
+	articleRepository := pgArticle.NewArticleRepository(postgresdb.Conn, artcleRdb)
 
 	httpServer, err := rest.New(
 		conf.Http,
@@ -67,7 +67,7 @@ func main() {
 		logger,
 		usecases.AllUseCases{
 
-			ArticleUC: articleUC.NewArticleUseCase(articleRepository, artcleRdb),
+			ArticleUC: articleUC.NewArticleUseCase(articleRepository),
 		},
 	)
 	if err != nil {
