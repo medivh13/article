@@ -11,8 +11,8 @@ import (
 	usecases "article/src/app/usecases"
 	"article/src/infra/config"
 
-	healthHandler "article/src/interface/rest/handlers/health"
 	articleHandler "article/src/interface/rest/handlers/article"
+	healthHandler "article/src/interface/rest/handlers/health"
 	"article/src/interface/rest/response"
 	"article/src/interface/rest/route"
 
@@ -92,7 +92,7 @@ func makeRoute(
 	hh := healthHandler.NewHealthHandler(respClient)
 	r.Mount("/", route.HealthRouter(hh))
 	ah := articleHandler.NewArticleHandler(respClient, useCases.ArticleUC)
-	
+
 	r.Route("/api", func(r chi.Router) {
 
 		r.Mount("/articles", route.ArticleRouter(ah))
